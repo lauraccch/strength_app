@@ -1,0 +1,797 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Strength progress</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta name="theme-color" content="#faf9f6" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1b1a18" media="(prefers-color-scheme: dark)">
+<style>
+  :root {
+    color-scheme: light;
+    --color-bg: #faf9f6; --color-panel: #ffffff; --color-fg: #1f1e1c; --color-fg-muted: #6b6862; --color-border-line: #e4e1da;
+    --color-ok: #2f8a57; --color-bad: #c0392b; --color-warn: #b8860b;
+    --cds-chart-grid: #ecebe6; --cds-chart-axis: #c9c6bf; --cds-chart-muted: #a9a59d; --cds-chart-reference: #9d998f;
+    --cds-surface-popover: #ffffff; --cds-border: #e0ddd5; --cds-text-secondary: #6b6862; --cds-shadow-popover: 0 4px 14px rgba(0,0,0,.12);
+    --font-anthropic-sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --font-anthropic-serif: Georgia, "Times New Roman", serif;
+    --cds-font-size-caption: 12px; --cds-font-size-body: 15px; --cds-font-size-heading: 18px; --cds-font-size-title: 30px; --cds-font-weight-medium: 600;
+    --cds-gap-xs: 4px; --cds-gap-sm: 8px; --cds-gap-md: 16px; --cds-gap-lg: 28px;
+    --cds-pad-xs: 4px; --cds-pad-sm: 8px; --cds-pad-md: 12px; --cds-pad-lg: 18px; --cds-radius: 10px;
+    --cds-dur-slow: 300ms; --cds-ease-out: cubic-bezier(.2,.7,.2,1);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --color-bg: #1b1a18; --color-panel: #242320; --color-fg: #ece9e2; --color-fg-muted: #a39f96; --color-border-line: #3a3833;
+      --color-ok: #5cc28a; --color-bad: #ef7b6e;
+      --cds-chart-grid: #312f2b; --cds-chart-axis: #4b4943; --cds-chart-muted: #77736b; --cds-chart-reference: #8a867d;
+      --cds-surface-popover: #2c2b27; --cds-border: #45433d; --cds-text-secondary: #a39f96; --cds-shadow-popover: 0 4px 14px rgba(0,0,0,.4);
+    }
+  }
+  html, body { margin: 0; background: var(--color-bg); color: var(--color-fg); }
+  #dash-root { max-width: 1200px; margin: 0 auto; padding: 24px 16px 48px; }
+  .app-bar { margin: 0 0 16px; font: 12px var(--font-anthropic-sans); color: var(--color-fg-muted); }
+  .dash-skeleton:empty { min-height: 1.4em; }
+</style>
+<style>
+  .app-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 0 0 20px; font: 13px var(--font-anthropic-sans); color: var(--color-fg-muted); }
+  #app-status { flex: 1 1 8rem; min-width: 0; }
+  #app-status.bad { color: var(--color-bad); }
+  .app-btn { font: 500 14px var(--font-anthropic-sans); color: var(--color-fg); background: var(--color-panel); border: 1px solid var(--color-border-line); border-radius: 8px; padding: 8px 14px; min-height: 40px; cursor: pointer; }
+  .app-btn:disabled { opacity: .55; cursor: default; }
+  .app-btn.link { background: none; border-color: transparent; color: var(--color-fg-muted); }
+  .app-setup { margin: 0 0 24px; padding: 16px; background: var(--color-panel); border: 1px solid var(--color-border-line); border-radius: 10px; font: 14px/1.5 var(--font-anthropic-sans); }
+  .app-setup h2 { margin: 0 0 6px; font-size: 17px; font-weight: 600; }
+  .app-setup p { margin: 0 0 10px; color: var(--color-fg-muted); }
+  .app-setup form { display: flex; flex-wrap: wrap; gap: 8px; }
+  .app-setup input { flex: 1 1 18rem; min-width: 0; font: 14px var(--font-anthropic-sans); padding: 8px 10px; border-radius: 8px; border: 1px solid var(--color-border-line); background: var(--color-bg); color: var(--color-fg); }
+  #app-setup-err { color: var(--color-bad); margin: 6px 0 0; }
+  .app-sync ul { margin: 6px 0 0; padding-left: 18px; color: var(--color-fg); }
+  .app-sync li { margin: 2px 0; }
+  .app-sync-list { margin: 8px 0; }
+  .app-sync-list summary { cursor: pointer; font-weight: 500; color: var(--color-fg); }
+  .app-sync-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .app-btn.primary { background: var(--color-fg); color: var(--color-bg); border-color: var(--color-fg); }
+  .app-warn { color: var(--color-bad) !important; }
+  .app-muted { font-size: 13px; }
+  #dash-root { padding-top: max(16px, env(safe-area-inset-top)); }
+</style>
+<script src="d3.min.js"></script>
+<script src="config.js"></script>
+<script src="mappings.js"></script>
+<script src="extract.js"></script>
+<script src="app.js"></script>
+<script src="https://accounts.google.com/gsi/client" async></script>
+</head>
+<body>
+<div id="dash-root">
+<div class="app-bar">
+  <span id="app-status" role="status"></span>
+  <button type="button" class="app-btn" id="app-refresh">Aktualisieren</button>
+  <button type="button" class="app-btn" id="app-sync-btn">Plan übernehmen</button>
+  <button type="button" class="app-btn link" id="app-signout" hidden>Abmelden</button>
+</div>
+<section class="app-setup app-sync" id="app-sync" hidden aria-live="polite"></section>
+<section class="app-setup" id="app-setup" hidden>
+  <h2>Einrichtung</h2>
+  <p>Füge die OAuth-Client-ID aus der Google Cloud Console ein. Sie wird nur auf diesem Gerät gespeichert.</p>
+  <form id="app-setup-form">
+    <input id="app-client-id" placeholder="…apps.googleusercontent.com" autocomplete="off" spellcheck="false" aria-label="OAuth-Client-ID">
+    <button class="app-btn" type="submit">Speichern und anmelden</button>
+  </form>
+  <p id="app-setup-err" role="alert"></p>
+</section>
+<style>
+  .sp { display: flex; flex-direction: column; gap: var(--cds-gap-lg); font-family: var(--font-anthropic-sans); color: var(--color-fg); }
+  .sp-head { display: flex; flex-direction: column; gap: var(--cds-gap-xs); }
+  .sp-title { margin: 0; font-family: var(--font-anthropic-serif); font-weight: 400; font-size: var(--cds-font-size-title); text-wrap: balance; }
+  .sp .sp-tile b { font-weight: 500; color: var(--color-fg); }
+  .sp-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr)); gap: var(--cds-gap-md); }
+  .sp-tile { display: flex; flex-direction: column; gap: var(--cds-gap-xs); background: var(--color-panel); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); padding: var(--cds-pad-lg); min-height: 7.5rem; }
+  .sp-tile-label { font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); }
+  .sp-tile-value { font-family: var(--font-anthropic-serif); font-weight: 400; font-size: var(--cds-font-size-title); font-variant-numeric: tabular-nums; }
+  .sp-tile-sub { font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); font-variant-numeric: tabular-nums; }
+  .sp-up { color: var(--color-ok); }
+  .sp-down { color: var(--color-bad); }
+  .sp-tiles-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--cds-gap-sm); }
+  .sp-toggle { display: inline-flex; border: 1px solid var(--color-border-line); border-radius: 999px; padding: 2px; background: var(--color-bg); }
+  .sp-toggle button { font: inherit; font-size: var(--cds-font-size-caption); border: 0; border-radius: 999px; padding: var(--cds-pad-xs) var(--cds-pad-md); background: none; color: var(--color-fg-muted); cursor: pointer; }
+  .sp-toggle button[aria-pressed="true"] { background: var(--color-fg); color: var(--color-bg); }
+  .sp-toggle button:focus-visible { outline: 2px solid var(--color-fg); outline-offset: 2px; }
+  .sp-tile-mode { font-size: var(--cds-font-size-caption); font-weight: var(--cds-font-weight-medium); color: var(--color-fg); }
+  .sp-tile-set { font-size: var(--cds-font-size-caption); color: var(--color-fg); font-variant-numeric: tabular-nums; }
+  .sp-tile-other { margin-top: auto; padding-top: var(--cds-gap-xs); border-top: 1px solid var(--color-border-line); }
+  .sp-tabs { display: flex; gap: var(--cds-gap-xs); border-bottom: 1px solid var(--color-border-line); }
+  .sp-tab { font: inherit; font-size: var(--cds-font-size-body); background: none; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; padding: var(--cds-pad-sm) var(--cds-pad-md); color: var(--color-fg-muted); cursor: pointer; }
+  .sp-tab[aria-selected="true"] { color: var(--color-fg); border-bottom-color: var(--color-fg); font-weight: var(--cds-font-weight-medium); }
+  .sp-tab:focus-visible { outline: 2px solid var(--color-fg); outline-offset: 2px; }
+  .sp-view { display: flex; flex-direction: column; gap: var(--cds-gap-lg); }
+  .sp-view[hidden] { display: none; }
+  .sp-acc-tools { display: flex; flex-wrap: wrap; align-items: center; gap: var(--cds-gap-sm); }
+  .sp-search { font: inherit; font-size: var(--cds-font-size-caption); padding: var(--cds-pad-xs) var(--cds-pad-sm); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); background: var(--color-bg); color: var(--color-fg); min-width: min(100%, 16rem); }
+  .sp-acc-card .sp-legend { margin-top: 2px; }
+  .sp-picker { display: flex; flex-wrap: wrap; gap: var(--cds-gap-xs); min-height: 2rem; }
+  .sp-pick { font: inherit; font-size: var(--cds-font-size-caption); padding: var(--cds-pad-xs) var(--cds-pad-sm); border-radius: 999px; border: 1px solid var(--color-border-line); background: var(--color-bg); color: var(--color-fg); cursor: pointer; }
+  .sp-pick:hover { border-color: var(--color-fg-muted); }
+  .sp-pick[aria-pressed="true"] { background: var(--color-fg); color: var(--color-bg); border-color: var(--color-fg); }
+  .sp-pick:focus-visible { outline: 2px solid var(--color-fg); outline-offset: 2px; }
+  .sp-card { display: flex; flex-direction: column; gap: var(--cds-gap-sm); background: var(--color-panel); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); padding: var(--cds-pad-lg); min-width: 0; }
+  .sp-card-head { display: flex; flex-direction: column; gap: 2px; }
+  .sp-h2 { margin: 0; font-size: var(--cds-font-size-heading); font-weight: var(--cds-font-weight-medium); }
+  .sp-h3 { margin: 0; font-size: var(--cds-font-size-body); font-weight: var(--cds-font-weight-medium); }
+  .sp-note { margin: 0; font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); }
+  .sp-stats { font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); font-variant-numeric: tabular-nums; }
+  .sp-section { margin-top: var(--cds-gap-sm); }
+  .sp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 20rem), 1fr)); gap: var(--cds-gap-md); }
+  .sp-chart { position: relative; min-height: 180px; }
+  .sp-chart.sp-big { min-height: 300px; }
+  .sp-chart svg { display: block; overflow: visible; }
+  .sp-chart text { fill: var(--color-fg-muted); font-size: var(--cds-font-size-caption); font-family: var(--font-anthropic-sans); font-variant-numeric: tabular-nums; }
+  .sp-chart .grid line { stroke: var(--cds-chart-grid); }
+  .sp-chart .domain { stroke: var(--cds-chart-axis); }
+  .sp-chart .tick line { stroke: var(--cds-chart-axis); }
+  .sp-chart .sp-grid-lines .tick line { stroke: var(--cds-chart-grid); }
+  .sp-chart .sp-grid-lines .domain { display: none; }
+  .sp-legend { display: flex; flex-wrap: wrap; gap: var(--cds-gap-xs) var(--cds-gap-md); font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); }
+  .sp-key { display: inline-flex; align-items: center; gap: 6px; cursor: default; }
+  .sp-swatch { width: 12px; height: 3px; border-radius: 2px; flex: none; }
+  .sp-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+  .sp-tip { position: absolute; z-index: 2; pointer-events: none; background: var(--cds-surface-popover); border: 1px solid var(--cds-border); border-radius: var(--cds-radius); box-shadow: var(--cds-shadow-popover); padding: var(--cds-pad-xs) var(--cds-pad-sm); font-size: var(--cds-font-size-caption); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .sp-tip-date { color: var(--cds-text-secondary); }
+  .sp-tip-row { display: flex; align-items: center; gap: 6px; }
+  .sp-table-wrap { max-height: 28rem; overflow: auto; }
+  .sp-table { width: 100%; border-collapse: collapse; font-size: var(--cds-font-size-caption); font-variant-numeric: tabular-nums; }
+  .sp-table th { position: sticky; top: 0; background: var(--color-panel); text-align: right; font-weight: var(--cds-font-weight-medium); color: var(--color-fg-muted); border-bottom: 1px solid var(--color-border-line); padding: 0; white-space: nowrap; }
+  .sp-table th:first-child, .sp-table td:first-child { text-align: left; }
+  .sp-table th button { font: inherit; color: inherit; background: none; border: 0; padding: var(--cds-pad-xs) var(--cds-pad-sm); cursor: pointer; width: 100%; text-align: inherit; }
+  .sp-table th button:focus-visible { outline: 2px solid var(--color-fg); outline-offset: -2px; }
+  .sp-table td { text-align: right; padding: var(--cds-pad-xs) var(--cds-pad-sm); border-bottom: 1px solid var(--color-border-line); white-space: nowrap; }
+  .sp-table td:first-child { white-space: normal; min-width: 9rem; }
+  .sp-method { margin: 0; max-width: 46rem; font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); }
+  .sp-failed { display: flex; align-items: center; justify-content: center; gap: 6px; min-height: inherit; font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); }
+  .sp-failed::before { content: ""; width: .375rem; height: .375rem; border-radius: 50%; background: var(--color-bad); }
+  [data-dash-source-state=empty] { color: transparent; }
+  [data-dash-source-state=refreshing] { opacity: .5; transition: opacity var(--cds-dur-slow); }
+  @media (prefers-reduced-motion: no-preference) {
+    .sp-fade { animation: sp-in var(--cds-dur-slow) var(--cds-ease-out); }
+    @keyframes sp-in { from { opacity: 0; } to { opacity: 1; } }
+  }
+</style>
+
+<div class="sp">
+  <header class="sp-head">
+    <h1 class="sp-title" id="sp-title">Strength progress</h1>
+  </header>
+
+  <div class="sp-tabs" role="tablist" aria-label="View">
+    <button type="button" class="sp-tab" role="tab" id="sp-tab-main" data-view="main" aria-selected="true" aria-controls="sp-main-view">Main lifts</button>
+    <button type="button" class="sp-tab" role="tab" id="sp-tab-acc" data-view="acc" aria-selected="false" aria-controls="sp-acc-view">Accessories</button>
+  </div>
+
+  <div class="sp-view" id="sp-main-view" role="tabpanel" aria-labelledby="sp-tab-main">
+  <div class="sp-tiles-head">
+    <h2 class="sp-h2">Competition lifts</h2>
+    <div class="sp-toggle" id="sp-tile-mode" role="group" aria-label="Value shown in the tiles">
+      <button type="button" data-mode="recent" aria-pressed="true">Current (last 5 weeks)</button>
+      <button type="button" data-mode="best" aria-pressed="false">Best ever</button>
+    </div>
+  </div>
+  <section class="sp-tiles" id="sp-tiles" aria-label="Competition lifts" data-source="lift_summary"></section>
+
+  <div class="sp-picker" id="sp-picker" role="group" aria-label="Exercise" data-source="lift_summary"></div>
+
+  <section class="sp-card" id="sp-overview">
+    <div class="sp-card-head">
+      <h2 class="sp-h2" id="sp-overview-title">All variations</h2>
+      <p class="sp-note">Each line is the best estimated 1RM over the past 5 weeks. A gap means that variation wasn’t trained for more than 5 weeks.</p>
+    </div>
+    <div class="sp-legend" id="sp-legend" data-source="session_best"></div>
+    <div class="sp-chart sp-big dash-skeleton" id="sp-overview-chart" data-source="session_best"></div>
+  </section>
+
+  <div class="sp-card-head sp-section">
+    <h2 class="sp-h2" id="sp-variations-title">By variation</h2>
+    <p class="sp-note">Each dot is one session’s best set, the one with the highest estimated 1RM. The line is the 5-week best. All cards use the same scales, so you can compare them directly.</p>
+  </div>
+  <div class="sp-grid" id="sp-variations" data-source="session_best"></div>
+
+  <section class="sp-card" id="sp-summary">
+    <div class="sp-card-head">
+      <h2 class="sp-h2" id="sp-summary-title">Summary</h2>
+      <p class="sp-note">Start and recent are the best estimates in a variation’s first and last 5 weeks. kg / month is a straight-line fit through every session’s best.</p>
+    </div>
+    <div class="sp-table-wrap">
+      <table class="sp-table" id="sp-table" data-source="lift_summary" data-row-key="lift">
+        <thead><tr>
+          <th data-field="variation"><button type="button" data-key="variation">Variation</button></th>
+          <th data-field="sessions"><button type="button" data-key="sessions">Sessions</button></th>
+          <th data-field="sets"><button type="button" data-key="sets">Sets</button></th>
+          <th data-field="first"><button type="button" data-key="first">First</button></th>
+          <th data-field="last"><button type="button" data-key="last">Last</button></th>
+          <th data-field="early"><button type="button" data-key="early">Start</button></th>
+          <th data-field="recent"><button type="button" data-key="recent">Recent</button></th>
+          <th data-field="change"><button type="button" data-key="change">Change</button></th>
+          <th data-field="best"><button type="button" data-key="best">Best</button></th>
+          <th data-field="per_month"><button type="button" data-key="per_month">kg / month</button></th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <p class="sp-method" id="sp-method">
+    Estimated 1RM uses the Epley formula: weight × (1 + reps ÷ 30). A single counts as its own weight.
+    <span data-source="coverage" data-field="sets_left_out" data-row="0">—</span> sets of more than 10 reps are left out, because rep-based estimates are unreliable that high.
+    That leaves <span data-source="coverage" data-field="sets_used" data-row="0">—</span> of <span data-source="coverage" data-field="sets_logged" data-row="0">—</span> logged squat, bench and deadlift sets.
+    Variations with fewer than 3 sessions appear only in the summary table.
+    The three tiles at the top show the competition variations: Squat · Lowbar, Bench · Comp. Bench and Deadlift · Conventional.
+    Sets up to 9 Feb 2025 come from Summary Training, later ones from the training plan, with variation names as each source writes them.
+  </p>
+  </div>
+
+  <div class="sp-view" id="sp-acc-view" role="tabpanel" aria-labelledby="sp-tab-acc" hidden>
+    <div class="sp-card-head">
+      <h2 class="sp-h2">Accessories</h2>
+      <p class="sp-note">One chart per exercise. Each dot is one session’s best set by estimated 1RM (Epley, weight × (1 + reps / 30), applied to all rep counts), so the same weight for more reps ranks higher; the line connects the sessions, hover for the set. With 15+ reps the estimate is rough, so read it as a trend rather than a real max. Leg extension values are machine settings, not kg. Sets without added weight are left out, and so are the seated leg curl sets over 20 kg, which were on another machine.</p>
+    </div>
+    <div class="sp-acc-tools">
+      <input type="search" class="sp-search" id="sp-acc-search" placeholder="Filter exercises" aria-label="Filter exercises">
+      <span class="sp-stats" id="sp-acc-count" data-source="acc_sessions"></span>
+    </div>
+    <div class="sp-grid" id="sp-acc-grid" data-source="acc_sessions"></div>
+  </div>
+</div>
+
+<script>
+const readSheet = {
+  description: 'The sheet’s cells as rows: header names trimmed, comma decimals read as numbers, dd.mm.yyyy dates (or a date cell’s day number) read as ISO dates.',
+  fn: ({ answer }) => {
+    const a = typeof answer === 'string' ? JSON.parse(answer) : answer;
+    if (!a || !Array.isArray(a.values)) throw new Error('The sheet returned no values.');
+    const [head, ...body] = a.values;
+    const col = Object.fromEntries(head.map((h, i) => [String(h).trim().toLowerCase(), i]));
+    const cell = (r, name) => (r[col[name]] ?? '').toString().trim();
+    const num = (x) => (x === '' ? null : Number(x.replace(',', '.')));
+    const day = (x) => {
+      const m = /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/.exec(x);
+      if (m) return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+      // a date cell without date format arrives as its day number (days since 30 Dec 1899)
+      if (/^\d{5}$/.test(x)) return new Date(Date.UTC(1899, 11, 30) + Number(x) * 864e5).toISOString().slice(0, 10);
+      return null;
+    };
+    const rows = body
+      .filter((r) => r.some((c) => String(c).trim() !== ''))
+      .map((r) => ({
+        block: cell(r, 'block') || null,
+        week: cell(r, 'week') || null,
+        date: day(cell(r, 'date')),
+        exercise: cell(r, 'exercise'),
+        variation: cell(r, 'variation'),
+        set: num(cell(r, 'set')),
+        weight: num(cell(r, 'weight')),
+        reps: num(cell(r, 'reps')),
+      }));
+    return { columns: ['block', 'week', 'date', 'exercise', 'variation', 'set', 'weight', 'reps'], rows };
+  },
+};
+dash.loader('training', readSheet);
+dash.loader('training_plan', readSheet);
+
+dash.calc('all_sets', {
+  title: 'Combined training log',
+  description: 'Summary Training up to 9 Feb 2025, then the sets extracted from the training plan. Some Summary Training names are read under their new names: deadlift Competition as Conventional, Paused as Paused, Conventional, Tempo as Tempo Eccentric; Overhead Press without a variation as OHP; Triceps Overhead V-Grip as Trizeps Überkopf V-Grip. Dumbell sets are logged per side, so their weight is doubled.',
+  inputs: ['training', 'training_plan'],
+  fn: (training, training_plan) => [
+    ...training.filter((s) => s.date && s.date < '2025-02-10').map((s) => {
+      const renamed = (s.exercise === 'Deadlift' && { 'Competition': 'Conventional', 'Paused': 'Paused, Conventional', 'Tempo': 'Tempo Eccentric' }[s.variation])
+        || (s.exercise === 'Overhead Press' && !s.variation && 'OHP');
+      const ex = { 'Triceps Overhead V-Grip': 'Trizeps Überkopf V-Grip' }[s.exercise];
+      return renamed || ex ? { ...s, variation: renamed || s.variation, exercise: ex || s.exercise } : s;
+    }),
+    ...training_plan.filter((s) => s.date),
+  ].map((s) => (s.variation === 'Dumbell' && s.weight != null ? { ...s, weight: s.weight * 2 } : s)),
+});
+
+dash.calc('acc_sessions', {
+  title: 'Accessories: best set per session (e1RM)',
+  description: 'For every exercise other than squat, bench and deadlift: each session’s set with the highest Epley estimate, weight × (1 + reps / 30) for any rep count, per variation. Pull-up grips, hip thrust, step-up, push-up, reverse curl, facepull, dumbbell flat and incline press, cable row and lat pulldown variants share one chart each; Good Mornings and Shrugs show their variants. Leg extension weights are machine settings (unit Stufe). Seated leg curl sets over 20 kg (another machine) are left out.',
+  inputs: ['all_sets'],
+  fn: (all_sets) => {
+    const chartOf = {
+      'Klimmzüge Obergriff': 'Klimmzüge', 'Klimmzüge Parallelgriff': 'Klimmzüge', 'Klimmzüge Untergriff': 'Klimmzüge',
+      'Hip Thrust': 'Hip Thrust', 'Hip Thrust paused': 'Hip Thrust',
+      '3-0-2 Step ups (festhalten)': 'Step ups', '4-0-2 Step ups (festhalten)': 'Step ups',
+      'Liegestütze': 'Liegestütze', 'Liegestütze Pausiert': 'Liegestütze', 'Liegestütze 45cm': 'Liegestütze',
+      'Reverse Curls': 'Reverse Curls', 'Reverse Curls 3sec eccentric': 'Reverse Curls',
+      'Facepulls am Kabel': 'Facepulls', 'Facepulls am Kabel (sitzend)': 'Facepulls',
+      'Kurzhantel Flachbank feet up': 'Kurzhantel Flachbank', '2sek Paused Kurzhantel flat Bench': 'Kurzhantel Flachbank',
+      '40°Kurzhantel-Schrägbankdrücken': 'Kurzhantel Schrägbank', 'KH Schrägbank paused': 'Kurzhantel Schrägbank',
+      'einarmiges Kabelrudern': 'Kabelrudern', 'enges Kabelrudern pause im Stretch': 'Kabelrudern', 'Kabelrudern (grüner Rotationsgriff)': 'Kabelrudern', 'Cable Row Narrow Grip': 'Kabelrudern',
+      'Latzug einarmig': 'Latzug', 'Breites Latziehen': 'Latzug', 'Lat Pulldown Narrow Neutral Grip': 'Latzug',
+    };
+    const groups = new Map();
+    for (const s of all_sets) {
+      if (['Squat', 'Bench', 'Deadlift'].includes(s.exercise) || !s.exercise || !s.date || !(s.weight > 0) || !(s.reps >= 1)) continue;
+      // the few seated leg curl sets over 20 kg were on a different machine
+      if (s.exercise === 'Sitzende Beinbeugermaschine' && s.weight > 20) continue;
+      const variation = s.variation || '';
+      const key = s.exercise + '|' + variation + '|' + s.date;
+      const g = groups.get(key);
+      const chart = chartOf[s.exercise] || s.exercise;
+      const line = chartOf[s.exercise] ? s.exercise + (variation ? ' · ' + variation : '') : variation;
+      const e1rm = s.reps === 1 ? s.weight : s.weight * (1 + s.reps / 30);
+      const unit = /^Leg Extension/.test(s.exercise) ? 'Stufe' : 'kg';
+      if (!g) groups.set(key, { chart, line, exercise: s.exercise, variation, date: s.date, weight: s.weight, reps: s.reps, e1rm, unit, sets: 1 });
+      else { g.sets += 1; if (e1rm > g.e1rm) Object.assign(g, { weight: s.weight, reps: s.reps, e1rm }); }
+    }
+    return [...groups.values()].sort((a, b) => a.chart.localeCompare(b.chart) || a.line.localeCompare(b.line) || a.date.localeCompare(b.date));
+  },
+});
+
+dash.calc('e1rm_sets', {
+  title: 'Estimated 1RM per set',
+  description: 'Epley estimate for every squat, bench and deadlift set of 1–10 reps: weight × (1 + reps / 30); a single counts as its weight.',
+  inputs: ['all_sets'],
+  fn: (all_sets) => all_sets
+    .filter((s) => ['Squat', 'Bench', 'Deadlift'].includes(s.exercise))
+    .filter((s) => s.date && s.weight > 0 && s.reps >= 1 && s.reps <= 10)
+    .map((s) => {
+      const variation = s.variation || 'Standard';
+      const e1rm = s.reps === 1 ? s.weight : s.weight * (1 + s.reps / 30);
+      return { lift: s.exercise + ' · ' + variation, exercise: s.exercise, variation, date: s.date, weight: s.weight, reps: s.reps, e1rm: Math.round(e1rm * 10) / 10 };
+    }),
+});
+
+dash.calc('session_best', {
+  title: 'Best set per session',
+  description: 'Each variation’s highest estimated 1RM per training day, with the best of the trailing 5 weeks as its trend.',
+  inputs: ['e1rm_sets'],
+  fn: (e1rm_sets) => {
+    const day = 864e5;
+    const groups = new Map();
+    for (const s of e1rm_sets) {
+      const key = s.lift + '|' + s.date;
+      const g = groups.get(key);
+      if (!g) groups.set(key, { ...s, sets: 1 });
+      else { g.sets += 1; if (s.e1rm > g.e1rm) Object.assign(g, { e1rm: s.e1rm, weight: s.weight, reps: s.reps }); }
+    }
+    const rows = [...groups.values()].sort((a, b) => a.lift.localeCompare(b.lift) || a.date.localeCompare(b.date));
+    return rows.map((s) => {
+      const t = Date.parse(s.date);
+      const window = rows.filter((o) => o.lift === s.lift && Date.parse(o.date) <= t && Date.parse(o.date) > t - 35 * day);
+      return { lift: s.lift, exercise: s.exercise, variation: s.variation, date: s.date, e1rm: s.e1rm, weight: s.weight, reps: s.reps, sets: s.sets, trend: Math.max(...window.map((o) => o.e1rm)) };
+    });
+  },
+});
+
+dash.calc('lift_summary', {
+  title: 'Progress per variation',
+  description: 'Per variation: best estimate in its first and last 5 weeks, the change between them, the all-time best and a straight-line trend in kg per month.',
+  inputs: ['session_best'],
+  fn: (session_best) => {
+    const day = 864e5;
+    const r1 = (v) => Math.round(v * 10) / 10;
+    const lifts = new Map();
+    for (const s of session_best) { if (!lifts.has(s.lift)) lifts.set(s.lift, []); lifts.get(s.lift).push(s); }
+    return [...lifts.values()].map((ss) => {
+      const t = ss.map((s) => Date.parse(s.date) / day);
+      const t0 = Math.min(...t), t1 = Math.max(...t), n = ss.length;
+      const bestIn = (from, to) => Math.max(...ss.filter((s, i) => t[i] >= from && t[i] <= to).map((s) => s.e1rm));
+      const mt = t.reduce((a, b) => a + b, 0) / n, me = ss.reduce((a, s) => a + s.e1rm, 0) / n;
+      let num = 0, den = 0;
+      ss.forEach((s, i) => { num += (t[i] - mt) * (s.e1rm - me); den += (t[i] - mt) ** 2; });
+      const early = bestIn(t0, t0 + 35), recent = bestIn(t1 - 35, t1);
+      const top = ss.reduce((a, s) => (s.e1rm > a.e1rm ? s : a));
+      const rec = ss.filter((s, i) => t[i] >= t1 - 35).reduce((a, s) => (s.e1rm > a.e1rm ? s : a));
+      return {
+        lift: ss[0].lift, exercise: ss[0].exercise, variation: ss[0].variation,
+        sessions: n, sets: ss.reduce((a, s) => a + s.sets, 0),
+        first: ss[0].date, last: ss[n - 1].date,
+        early: r1(early), recent: r1(recent), change: r1(recent - early),
+        recent_weight: rec.weight, recent_reps: rec.reps, recent_date: rec.date,
+        best: r1(top.e1rm), best_weight: top.weight, best_reps: top.reps, best_date: top.date,
+        per_month: n >= 3 && den ? Math.round((num / den) * 30.44 * 100) / 100 : null,
+      };
+    });
+  },
+});
+
+dash.calc('coverage', {
+  title: 'Sets used',
+  description: 'How many logged squat, bench and deadlift sets the estimates use, and the date range they cover.',
+  inputs: ['all_sets', 'e1rm_sets'],
+  fn: (all_sets, e1rm_sets) => {
+    const dates = e1rm_sets.map((s) => s.date).sort();
+    const main = all_sets.filter((s) => ['Squat', 'Bench', 'Deadlift'].includes(s.exercise) && s.date && s.weight > 0);
+    return [{ sets_logged: main.length, sets_used: e1rm_sets.length, sets_left_out: main.length - e1rm_sets.length, first: dates[0], last: dates[dates.length - 1] }];
+  },
+});
+</script>
+
+<script>
+(() => {
+  const DAY = 864e5;
+  const parse = d3.utcParse('%Y-%m-%d');
+  const f1 = d3.format('.1f');
+  const fInt = d3.format(',');
+  const fDay = d3.utcFormat('%-d %b %Y');
+  const fMon = d3.utcFormat('%b %Y');
+  const signed = (v) => (v > 0 ? '+' : v < 0 ? '-' : '') + f1(Math.abs(v));
+  const enc = (s) => String(s).replace(/%/g, '%25').replace(/&/g, '%26').replace(/=/g, '%3D');
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+  const mark = (e, src, field, lift) => { e.dataset.source = src; e.dataset.field = field; e.dataset.where = 'lift=' + enc(lift); return e; };
+  const MAIN = ['Squat', 'Bench', 'Deadlift'];
+  const MIN_SESSIONS = 3;
+
+  const $ = (id) => document.getElementById(id);
+  const tiles = $('sp-tiles'), picker = $('sp-picker'), tileModeBox = $('sp-tile-mode');
+  let tileMode = 'recent';
+  const overview = $('sp-overview-chart'), legend = $('sp-legend'), grid = $('sp-variations');
+  const table = $('sp-table'), tbody = table.querySelector('tbody');
+  let sortKey = 'sessions', sortDir = -1, highlight = null, drawnOnce = false;
+
+  if (!dash.params().exercise) dash.setParams({ exercise: 'Squat' });
+
+  const failed = (box) => { box.replaceChildren(el('div', 'sp-failed', 'Failed to load')); };
+
+  // The competition variation of each main lift, as the sheets name it.
+  const COMP = { Squat: 'Lowbar', Bench: 'Comp. Bench', Deadlift: 'Conventional' };
+  const mainLift = (summary, ex) => summary.find((r) => r.exercise === ex && r.variation === COMP[ex]);
+
+  const measure = (svg, texts) => {
+    const t = svg.append('text').attr('class', 'sp-measure');
+    let w = 0;
+    for (const s of texts) { t.text(s); w = Math.max(w, t.node().getComputedTextLength()); }
+    t.remove();
+    return w;
+  };
+
+  const tipBox = (box) => {
+    let tip = box.querySelector('.sp-tip');
+    if (!tip) { tip = el('div', 'sp-tip'); tip.hidden = true; box.appendChild(tip); }
+    return tip;
+  };
+  const placeTip = (box, tip, x, y) => {
+    tip.hidden = false;
+    const bw = box.clientWidth, tw = tip.offsetWidth, th = tip.offsetHeight;
+    let left = x + 12; if (left + tw > bw) left = x - tw - 12; if (left < 0) left = 0;
+    let top = y - th - 8; if (top < 0) top = y + 12;
+    tip.style.left = left + 'px'; tip.style.top = top + 'px';
+  };
+
+  // Splits a variation's sessions where it wasn't trained for more than 5 weeks.
+  const segments = (rows) => {
+    const out = []; let cur = [];
+    rows.forEach((r, i) => {
+      if (i && r.t - rows[i - 1].t > 35 * DAY) { out.push(cur); cur = []; }
+      cur.push(r);
+    });
+    if (cur.length) out.push(cur);
+    return out;
+  };
+
+  const axes = (svg, x, y, w, h, m) => {
+    const yTicks = y.ticks(Math.max(3, Math.floor(h / 45)));
+    svg.append('g').attr('class', 'sp-grid-lines').attr('transform', `translate(${m.l},0)`)
+      .call(d3.axisLeft(y).tickValues(yTicks).tickSize(-(w - m.l - m.r)).tickFormat((d) => d3.format('d')(d)).tickPadding(6))
+      .attr('font-size', null).attr('font-family', null);
+    svg.append('g').attr('transform', `translate(0,${h - m.b})`)
+      .call(d3.axisBottom(x).ticks(Math.max(2, Math.floor((w - m.l - m.r) / 80))).tickFormat(d3.utcFormat('%b %y')).tickSizeOuter(0))
+      .attr('font-size', null).attr('font-family', null);
+  };
+
+  const drawOverview = (lifts, colorOf, x0, y0) => {
+    overview.replaceChildren();
+    const w = overview.clientWidth, h = 300;
+    const svg = d3.select(overview).append('svg').attr('width', '100%').attr('height', h).attr('viewBox', `0 0 ${w} ${h}`);
+    const y = d3.scaleLinear(y0, [h - 24, 8]).nice();
+    const l = measure(svg, y.ticks(6).map((d) => d3.format('d')(d))) + 10;
+    const m = { l, r: 8, b: 24 };
+    const x = d3.scaleUtc(x0, [m.l, w - m.r]);
+    axes(svg, x, y, w, h, m);
+    const line = d3.line().x((d) => x(d.t)).y((d) => y(d.trend)).curve(d3.curveStepAfter);
+    const pts = [];
+    const order = lifts.slice().reverse(); // most-trained drawn last, on top
+    for (const L of order) {
+      const g = svg.append('g').attr('class', 'sp-series').attr('data-lift', L.lift);
+      for (const seg of segments(L.rows)) {
+        if (seg.length === 1) g.append('circle').attr('cx', x(seg[0].t)).attr('cy', y(seg[0].trend)).attr('r', 2.5).attr('fill', colorOf(L.lift));
+        else g.append('path').attr('d', line(seg)).attr('fill', 'none').attr('stroke', colorOf(L.lift)).attr('stroke-width', 2).attr('stroke-linejoin', 'round').attr('stroke-linecap', 'round');
+      }
+      L.rows.forEach((r) => pts.push({ ...r, px: x(r.t), py: y(r.trend), L }));
+    }
+    const dot = svg.append('circle').attr('r', 4).attr('fill', 'var(--color-panel)').attr('stroke-width', 2).style('display', 'none');
+    const tip = tipBox(overview);
+    const del = d3.Delaunay.from(pts, (p) => p.px, (p) => p.py);
+    svg.append('rect').attr('x', m.l).attr('y', 0).attr('width', Math.max(0, w - m.l - m.r)).attr('height', h - m.b).attr('fill', 'transparent')
+      .on('pointermove', (ev) => {
+        const [px, py] = d3.pointer(ev);
+        const p = pts[del.find(px, py)];
+        if (!p) return;
+        dot.style('display', null).attr('cx', p.px).attr('cy', p.py).attr('stroke', colorOf(p.lift));
+        const row = el('div', 'sp-tip-row'); const sw = el('span', 'sp-dot'); sw.style.background = colorOf(p.lift);
+        row.append(sw, el('span', null, p.variation + ': ' + f1(p.trend) + ' kg'));
+        tip.replaceChildren(el('div', 'sp-tip-date', fDay(p.d)), row, el('div', 'sp-tip-date', 'That day: ' + f1(p.weight) + ' kg × ' + p.reps + ' → ' + f1(p.e1rm) + ' kg'));
+        placeTip(overview, tip, p.px, p.py);
+        setHighlight(p.lift);
+      })
+      .on('pointerleave', () => { dot.style('display', 'none'); tip.hidden = true; setHighlight(null); });
+    applyHighlight();
+  };
+
+  const setHighlight = (lift) => { highlight = lift; applyHighlight(); };
+  const applyHighlight = () => {
+    overview.querySelectorAll('.sp-series').forEach((g) => { g.style.opacity = !highlight || g.dataset.lift === highlight ? 1 : 0.15; });
+    legend.querySelectorAll('.sp-key').forEach((k) => { k.style.opacity = !highlight || k.dataset.lift === highlight ? 1 : 0.4; });
+  };
+
+  const drawCard = (L, colorOf, x0, y0) => {
+    const card = el('section', 'sp-card sp-fade');
+    card.id = 'sp-v-' + L.lift.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    const head = el('div', 'sp-card-head');
+    head.append(el('h3', 'sp-h3', L.variation));
+    const s = L.summary;
+    const stats = el('div', 'sp-stats');
+    const ch = el('span', s.change > 0 ? 'sp-up' : s.change < 0 ? 'sp-down' : null); ch.append(mark(el('span', null, signed(s.change)), 'lift_summary', 'change', s.lift), ' kg');
+    const pm = mark(el('span', null, s.per_month == null ? '—' : signed(s.per_month)), 'lift_summary', 'per_month', s.lift);
+    const rec = mark(el('span', null, f1(s.recent)), 'lift_summary', 'recent', s.lift);
+    stats.append('Recent ', rec, ' kg · ', ch, ' since start · ', pm, ' kg / month');
+    head.append(stats, el('p', 'sp-note', fMon(parse(s.first)) + ' – ' + fMon(parse(s.last)) + ' · ' + s.sessions + ' sessions'));
+    const box = el('div', 'sp-chart');
+    card.append(head, box);
+    grid.appendChild(card);
+
+    const w = box.clientWidth, h = 180;
+    const svg = d3.select(box).append('svg').attr('width', '100%').attr('height', h).attr('viewBox', `0 0 ${w} ${h}`);
+    const y = d3.scaleLinear(y0, [h - 24, 6]).nice();
+    const l = measure(svg, y.ticks(4).map((d) => d3.format('d')(d))) + 10;
+    const m = { l, r: 6, b: 24 };
+    const x = d3.scaleUtc(x0, [m.l, w - m.r]);
+    axes(svg, x, y, w, h, m);
+    const c = colorOf(L.lift);
+    const line = d3.line().x((d) => x(d.t)).y((d) => y(d.trend)).curve(d3.curveStepAfter);
+    for (const seg of segments(L.rows)) {
+      if (seg.length > 1) svg.append('path').attr('d', line(seg)).attr('fill', 'none').attr('stroke', c).attr('stroke-width', 2).attr('stroke-linejoin', 'round').attr('stroke-linecap', 'round');
+    }
+    svg.append('g').selectAll('circle').data(L.rows).join('circle')
+      .attr('cx', (d) => x(d.t)).attr('cy', (d) => y(d.e1rm)).attr('r', 3.2).attr('fill', c).attr('stroke', 'var(--color-panel)').attr('stroke-width', 1);
+    const rule = svg.append('line').attr('y1', 6).attr('y2', h - m.b).attr('stroke', 'var(--cds-chart-reference)').style('display', 'none');
+    const dot = svg.append('circle').attr('r', 4.5).attr('fill', c).attr('stroke', 'var(--color-panel)').attr('stroke-width', 2).style('display', 'none');
+    const tip = tipBox(box);
+    svg.append('rect').attr('x', m.l).attr('y', 0).attr('width', Math.max(0, w - m.l - m.r)).attr('height', h - m.b).attr('fill', 'transparent')
+      .on('pointermove', (ev) => {
+        const [px] = d3.pointer(ev);
+        const p = d3.least(L.rows, (r) => Math.abs(x(r.t) - px));
+        if (!p) return;
+        rule.style('display', null).attr('x1', x(p.t)).attr('x2', x(p.t));
+        dot.style('display', null).attr('cx', x(p.t)).attr('cy', y(p.e1rm));
+        tip.replaceChildren(
+          el('div', 'sp-tip-date', fDay(p.d) + ' · ' + p.sets + (p.sets === 1 ? ' set' : ' sets')),
+          el('div', null, 'Best set ' + f1(p.weight) + ' kg × ' + p.reps + ' → ' + f1(p.e1rm) + ' kg'),
+          el('div', 'sp-tip-date', '5-week best ' + f1(p.trend) + ' kg'));
+        placeTip(box, tip, x(p.t), y(p.e1rm));
+      })
+      .on('pointerleave', () => { rule.style('display', 'none'); dot.style('display', 'none'); tip.hidden = true; });
+  };
+
+  const drawTable = (rows) => {
+    const num = (v) => (v == null ? '—' : f1(v));
+    const sorted = rows.slice().sort((a, b) => {
+      const va = a[sortKey], vb = b[sortKey];
+      if (va == null) return 1; if (vb == null) return -1;
+      return (typeof va === 'string' ? va.localeCompare(vb) : va - vb) * sortDir;
+    });
+    tbody.replaceChildren(...sorted.map((r) => {
+      const tr = el('tr'); tr.dataset.key = r.lift;
+      const ch = el('td', r.change > 0 ? 'sp-up' : r.change < 0 ? 'sp-down' : null, signed(r.change));
+      tr.append(el('td', null, r.variation), el('td', null, fInt(r.sessions)), el('td', null, fInt(r.sets)),
+        el('td', null, fDay(parse(r.first))), el('td', null, fDay(parse(r.last))),
+        el('td', null, num(r.early)), el('td', null, num(r.recent)), ch, el('td', null, num(r.best)),
+        el('td', null, r.per_month == null ? '—' : signed(r.per_month)));
+      return tr;
+    }));
+    table.querySelectorAll('th').forEach((th) => {
+      const k = th.querySelector('button').dataset.key;
+      th.setAttribute('aria-sort', k === sortKey ? (sortDir > 0 ? 'ascending' : 'descending') : 'none');
+    });
+  };
+
+  table.querySelector('thead').addEventListener('click', (ev) => {
+    const b = ev.target.closest('button[data-key]'); if (!b) return;
+    const k = b.dataset.key;
+    if (k === sortKey) sortDir = -sortDir; else { sortKey = k; sortDir = (k === 'variation' || k === 'first') ? 1 : -1; }
+    draw();
+  });
+  tileModeBox.addEventListener('click', (ev) => {
+    const b = ev.target.closest('button[data-mode]'); if (b && b.dataset.mode !== tileMode) { tileMode = b.dataset.mode; draw(); }
+  });
+  picker.addEventListener('click', (ev) => {
+    const b = ev.target.closest('button[data-ex]'); if (b) dash.setParams({ exercise: b.dataset.ex });
+  });
+
+  const draw = () => {
+    const S = dash.data('lift_summary'), B = dash.data('session_best'), E = dash.data('e1rm_sets'), C = dash.data('coverage');
+    const bad = [S, B, E, C].some((d) => d.status === 'error');
+    const ready = [S, B, E, C].every((d) => d.status === 'ok');
+    overview.classList.toggle('dash-skeleton', !ready && !bad);
+    if (!ready) {
+      if (bad) failed(overview);
+      else overview.replaceChildren();
+      document.querySelectorAll('#sp-method [data-source=coverage]').forEach((e) => { e.textContent = '—'; });
+      tiles.replaceChildren(); picker.replaceChildren(); legend.replaceChildren(); grid.replaceChildren(); tbody.replaceChildren();
+      return;
+    }
+    const summary = S.data, best = B.data, cov = C.data[0];
+
+    document.querySelectorAll('#sp-method [data-source=coverage]').forEach((e) => { e.textContent = fInt(cov[e.dataset.field]); });
+
+    // Tiles: one per main lift
+    tileModeBox.querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.mode === tileMode)));
+    tiles.replaceChildren(...MAIN.map((ex) => mainLift(summary, ex)).filter(Boolean).map((r) => {
+      const best = tileMode === 'best';
+      const k = best ? 'best' : 'recent';
+      const t = el('div', 'sp-tile sp-fade');
+      const v = el('div', 'sp-tile-value'); v.append(mark(el('span', null, f1(r[k])), 'lift_summary', k, r.lift), ' kg');
+      const set = el('div', 'sp-tile-set');
+      set.append('from ', mark(el('span', null, f1(r[k + '_weight'])), 'lift_summary', k + '_weight', r.lift), ' kg × ',
+        mark(el('span', null, String(r[k + '_reps'])), 'lift_summary', k + '_reps', r.lift), ' on ',
+        mark(el('span', null, fDay(parse(r[k + '_date']))), 'lift_summary', k + '_date', r.lift));
+      const other = el('div', 'sp-tile-sub sp-tile-other');
+      if (best) {
+        other.append('Current (last 5 weeks): ', mark(el('span', null, f1(r.recent)), 'lift_summary', 'recent', r.lift), ' kg');
+      } else {
+        const ch = el('b', r.change > 0 ? 'sp-up' : r.change < 0 ? 'sp-down' : null); ch.append(mark(el('span', null, signed(r.change)), 'lift_summary', 'change', r.lift), ' kg');
+        const pm = mark(el('span', null, r.per_month == null ? '—' : signed(r.per_month)), 'lift_summary', 'per_month', r.lift);
+        const trend = el('div', 'sp-tile-sub'); trend.append(ch, ' since ' + fMon(parse(r.first)) + ' · ', pm, ' kg / month');
+        other.append('Best ever: ', mark(el('span', null, f1(r.best)), 'lift_summary', 'best', r.lift), ' kg');
+        t.append(el('div', 'sp-tile-label', r.exercise + ' · ' + r.variation), el('div', 'sp-tile-mode', 'Current e1RM, best set of the last 5 weeks'), v, set, trend, other);
+        return t;
+      }
+      t.append(el('div', 'sp-tile-label', r.exercise + ' · ' + r.variation), el('div', 'sp-tile-mode', 'Best e1RM ever'), v, set, other);
+      return t;
+    }));
+
+    // Exercise picker: the three main lifts, most sets first
+    const exSets = d3.rollups(summary.filter((r) => r.sessions >= MIN_SESSIONS && MAIN.includes(r.exercise)), (v) => d3.sum(v, (r) => r.sets), (r) => r.exercise).sort((a, b) => b[1] - a[1]);
+    let ex = dash.params().exercise;
+    if (!exSets.some(([e]) => e === ex) && exSets.length) ex = exSets[0][0];
+    picker.replaceChildren(...exSets.map(([e]) => {
+      const b = el('button', 'sp-pick', e); b.type = 'button'; b.dataset.ex = e; b.setAttribute('aria-pressed', String(e === ex)); return b;
+    }));
+    $('sp-overview-title').textContent = ex + ': all variations';
+    $('sp-variations-title').textContent = ex + ' by variation';
+    $('sp-summary-title').textContent = ex + ' summary';
+
+    // Series for this exercise
+    const exSummary = summary.filter((r) => r.exercise === ex);
+    const charted = exSummary.filter((r) => r.sessions >= MIN_SESSIONS).sort((a, b) => b.sessions - a.sessions);
+    const rowsOf = d3.group(best.filter((r) => r.exercise === ex).map((r) => ({ ...r, d: parse(r.date), t: +parse(r.date) })), (r) => r.lift);
+    const lifts = charted.map((s) => ({ lift: s.lift, variation: s.variation, summary: s, rows: (rowsOf.get(s.lift) || []).sort((a, b) => a.t - b.t) }));
+    const colors = dash.colors;
+    const colorOf = (lift) => { const i = lifts.findIndex((L) => L.lift === lift); return i >= 0 && i < colors.length ? colors[i] : 'var(--cds-chart-muted)'; };
+    const allSets = lifts.flatMap((L) => L.rows);
+    const x0 = d3.extent(allSets, (r) => r.d);
+    const y0 = [d3.min(allSets, (r) => r.e1rm) * 0.97, d3.max(allSets, (r) => r.e1rm) * 1.02];
+
+    legend.replaceChildren(...lifts.map((L) => {
+      const k = el('span', 'sp-key'); k.dataset.lift = L.lift;
+      const sw = el('span', 'sp-swatch'); sw.style.background = colorOf(L.lift);
+      k.append(sw, L.variation);
+      k.addEventListener('pointerenter', () => setHighlight(L.lift));
+      k.addEventListener('pointerleave', () => setHighlight(null));
+      return k;
+    }));
+    if (lifts.length && x0[0]) drawOverview(lifts, colorOf, x0, y0); else overview.replaceChildren();
+
+    grid.replaceChildren();
+    lifts.forEach((L) => drawCard(L, colorOf, x0, y0));
+
+    drawTable(exSummary);
+    if (!drawnOnce) {
+      drawnOnce = true;
+      const named = location.hash && document.getElementById(location.hash.slice(1));
+      if (named) named.scrollIntoView();
+    }
+  };
+
+  // Accessories tab
+  const accView = $('sp-acc-view'), mainView = $('sp-main-view'), accGrid = $('sp-acc-grid'), accSearch = $('sp-acc-search'), accCount = $('sp-acc-count');
+  let view = 'main';
+  const fW = (v) => d3.format('.4~f')(v);
+
+  const drawAccCard = (ex, rows, x0) => {
+    const card = el('section', 'sp-card sp-acc-card sp-fade');
+    card.dataset.ex = ex.toLowerCase();
+    const vars = d3.groups(rows, (r) => r.line).sort((a, b) => b[1].length - a[1].length);
+    const top = d3.greatest(rows, (r) => r.e1rm);
+    const last = rows[rows.length - 1];
+    const u = (r) => ' ' + r.unit;
+    const setTxt = (r) => f1(r.e1rm) + u(r) + ' (' + fW(r.weight) + ' × ' + r.reps + ')';
+    const head = el('div', 'sp-card-head');
+    head.append(el('h3', 'sp-h3', ex));
+    head.append(el('div', 'sp-stats', 'Last e1RM ' + setTxt(last) + ' · best ' + setTxt(top)));
+    head.append(el('p', 'sp-note', fMon(parse(rows[0].date)) + ' – ' + fMon(parse(last.date)) + ' · ' + new Set(rows.map((r) => r.date)).size + ' sessions'));
+    card.append(head);
+    const colorOf = (v) => { const i = vars.findIndex(([k]) => k === v); return i < dash.colors.length ? dash.colors[i] : 'var(--cds-chart-muted)'; };
+    if (vars.length > 1) {
+      const lg = el('div', 'sp-legend');
+      lg.append(...vars.map(([v]) => { const k = el('span', 'sp-key'); const sw = el('span', 'sp-swatch'); sw.style.background = colorOf(v); k.append(sw, v || 'Standard'); return k; }));
+      card.append(lg);
+    }
+    const box = el('div', 'sp-chart');
+    card.append(box);
+    accGrid.appendChild(card);
+
+    const w = box.clientWidth, h = 170;
+    const svg = d3.select(box).append('svg').attr('width', '100%').attr('height', h).attr('viewBox', `0 0 ${w} ${h}`);
+    const [lo, hi] = d3.extent(rows, (r) => r.e1rm);
+    const pad = Math.max((hi - lo) * 0.1, hi * 0.05, 1);
+    const y = d3.scaleLinear([Math.max(0, lo - pad), hi + pad], [h - 24, 6]).nice();
+    const l = measure(svg, y.ticks(4).map((d) => d3.format('~g')(d))) + 10;
+    const m = { l, r: 6, b: 24 };
+    const x = d3.scaleUtc(x0, [m.l, w - m.r]);
+    axes(svg, x, y, w, h, m);
+    const pts = [];
+    for (const [v, vr] of vars) {
+      const c = colorOf(v);
+      const data = vr.map((r) => ({ ...r, t: +parse(r.date) }));
+      const line = d3.line().x((d) => x(d.t)).y((d) => y(d.e1rm));
+      for (const seg of segments(data)) if (seg.length > 1) svg.append('path').attr('d', line(seg)).attr('fill', 'none').attr('stroke', c).attr('stroke-width', 1.5).attr('stroke-linejoin', 'round');
+      svg.append('g').selectAll('circle').data(data).join('circle').attr('cx', (d) => x(d.t)).attr('cy', (d) => y(d.e1rm)).attr('r', 2.6).attr('fill', c).attr('stroke', 'var(--color-panel)').attr('stroke-width', 1);
+      data.forEach((d) => pts.push({ ...d, px: x(d.t), py: y(d.e1rm), c }));
+    }
+    const dot = svg.append('circle').attr('r', 4.5).attr('stroke', 'var(--color-panel)').attr('stroke-width', 2).style('display', 'none');
+    const tip = tipBox(box);
+    const del = d3.Delaunay.from(pts, (p) => p.px, (p) => p.py);
+    svg.append('rect').attr('x', m.l).attr('y', 0).attr('width', Math.max(0, w - m.l - m.r)).attr('height', h - m.b).attr('fill', 'transparent')
+      .on('pointermove', (ev) => {
+        const [px, py] = d3.pointer(ev);
+        const p = pts[del.find(px, py)];
+        if (!p) return;
+        dot.style('display', null).attr('cx', p.px).attr('cy', p.py).attr('fill', p.c);
+        tip.replaceChildren(el('div', 'sp-tip-date', fDay(parse(p.date)) + ' · ' + p.sets + (p.sets === 1 ? ' set' : ' sets')),
+          el('div', null, (vars.length > 1 ? (p.line || 'Standard') + ': ' : '') + fW(p.weight) + u(p) + ' × ' + p.reps + ' → e1RM ' + f1(p.e1rm) + u(p)));
+        placeTip(box, tip, p.px, p.py);
+      })
+      .on('pointerleave', () => { dot.style('display', 'none'); tip.hidden = true; });
+  };
+
+  const drawAcc = () => {
+    if (view !== 'acc') return;
+    const A = dash.data('acc_sessions');
+    accGrid.replaceChildren();
+    if (A.status !== 'ok') { accCount.textContent = ''; if (A.status === 'error') failed(accGrid); return; }
+    const q = accSearch.value.trim().toLowerCase();
+    const byEx = d3.groups(A.data, (r) => r.chart)
+      .map(([ex, rows]) => [ex, rows.slice().sort((a, b) => a.date.localeCompare(b.date))])
+      .filter(([, rows]) => new Set(rows.map((r) => r.date)).size >= 2)
+      .sort((a, b) => new Set(b[1].map((r) => r.date)).size - new Set(a[1].map((r) => r.date)).size);
+    const shown = byEx.filter(([ex]) => !q || ex.toLowerCase().includes(q));
+    accCount.textContent = shown.length + ' of ' + byEx.length + ' exercises';
+    shown.forEach(([ex, rows]) => {
+      const [a, b] = d3.extent(rows, (r) => +parse(r.date));
+      const padT = Math.max(7 * DAY, (b - a) * 0.03);
+      drawAccCard(ex, rows, [new Date(a - padT), new Date(b + padT)]);
+    });
+  };
+
+  const setView = (v) => {
+    view = v;
+    document.querySelectorAll('.sp-tab').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.view === v)));
+    mainView.hidden = v !== 'main'; accView.hidden = v !== 'acc';
+    if (v === 'acc') drawAcc(); else draw();
+  };
+  document.querySelector('.sp-tabs').addEventListener('click', (ev) => { const b = ev.target.closest('.sp-tab'); if (b && b.dataset.view !== view) setView(b.dataset.view); });
+  accSearch.addEventListener('input', drawAcc);
+
+  dash.onData(() => { draw(); drawAcc(); });
+})();
+</script>
+
+</div>
+</body>
+</html>
